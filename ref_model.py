@@ -11,6 +11,17 @@ from torch.nn import functional as F
 # from utils import to_gpu, get_mask_from_lengths
 
 
+def conv_output_dims(conv_net, input_dims):
+    """A trick to learn the output dimensions of a convnet with known input
+    dimensions. Replace this if you find a better way to do it.
+
+    This assumes the convnet should take (N, 1, W1, H1) -> (N, C2, W2, H2). We
+    want to know W2, H2.
+
+    """
+    input_tensor = torch.zeros(1, 1, *input_dims)
+    return conv_net(input_tensor).shape[-2:]
+
 
 class ReferenceEncoder(nn.Module):
     r"""Recall the architecture of the reference encoder:
@@ -30,18 +41,23 @@ class ReferenceEncoder(nn.Module):
     """
     def __init__(self, input_dims, filter_size=3, filter_stride=2,
                  layer_filters=[32, 32, 64, 64, 128, 128],
-                 output_dim=128, activaton=nn.Tanh):
+                 embedding_dim=128, activation=nn.Tanh()):
         super().__init__()
-        self.conv_block = ConvBlock(input_dims, filter_Size, filter_stride, filters)
-        self.rnn_block = RnnBlock()
-        self.output_dim = output_dim
+        self.input_dims = input_dims
+        self.embedding_dim = embedding_dim
+
+        self.conv_block = ConvBlock(input_dims, filter_size, filter_stride, layer_filters)
+
+        # rnn input dimension should be (cnn output channels) * dR_reduced
+        rnn_input_dim = layer_filters[-1] * conv_output_dims(self.conv_block, input_dims)[1]
+        self.rnn_block = RnnBlock(rnn_input_dim, embedding_dim)
 
         # TODO: should there be bias in the linear layer?
-        self.linear_layer = nn.Linear(rnn_block.output_dim, self.output_dim, bias=True)
+        self.linear_layer = nn.Linear(self.rnn_block.embedding_dim, self.embedding_dim, bias=True)
         self.activation = activation
 
     def forward(self, x):
-        assert spectrogram.shape == input_dims  # this makes me a little uneasy
+        assert x.shape[2:] == self.input_dims  # this makes me a little uneasy
         x = self.conv_block(x)
         x = self.rnn_block(x)
         x = self.activation(self.linear_layer(x))
@@ -148,8 +164,9 @@ class RnnBlock(nn.Module):
 
         """
         x = x.permute(2,0,1,3).flatten(start_dim=-2)
-        # native input dimension for h0 is (S, N, hidden_size)
-        h0 = torch.zeros(1, x.shape[0], self.embedding_dim)
+
+        # native input dimension for h0 is (S, N, hidden_size).
+        h0 = torch.zeros(1, x.shape[1], self.embedding_dim)
 
         _, hn = self.gru(x, h0)  # discard the GRU output: don't care about it.
 
