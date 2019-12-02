@@ -51,8 +51,8 @@ class ReferenceEncoder(nn.Module):
 
         #
         # Fully connected layer
-        #   Linear projection of to desired dimensionality, (in
-        #   this case, also 128-dim) followed by tanh activation
+        #   Linear projection of final GRU state to desired dimensionality,
+        #   (in this case, also 128-dim) followed by tanh activation
         #     Note: Using Glorot initialization as in NVIDIA implementation of tacotron2
         #
         self.linear_projection = LinearNorm(in_dim = 128,
