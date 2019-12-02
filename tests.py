@@ -47,16 +47,22 @@ def _test_rnn_block():
 
     input_tensor = torch.randn(1, cnn_channels, LR_reduced, dR_reduced)
     rb = RnnBlock(input_dim, embedding_dim)
-    rb(input_tensor)
+    output = rb(input_tensor)
+    assert output.shape == torch.Size([embedding_dim])
 
 @test
 def _test_reference_encoder():
-    LR = 800
-    dR = 200
+    LR = 860
+    dR = 240
 
     input_spec = torch.randn(1, 1, LR, dR)
-    re = ReferenceEncoder((LR, dR))
-    re(input_spec)
+    re = ReferenceEncoder(input_dims=(LR, dR))
+    embedding = re(input_spec)
+    assert embedding.shape == torch.Size([128])
+
+# @test
+def _test_reference_encoder_real_spectrogram():
+    pass
 
 
 ### RUN THE TESTS ###

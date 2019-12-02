@@ -10,6 +10,8 @@ from torch.nn import functional as F
 # from layers import ConvNorm, LinearNorm
 # from utils import to_gpu, get_mask_from_lengths
 
+from hparams import ref_encoder_hparams
+
 
 def conv_output_dims(conv_net, input_dims):
     """A trick to learn the output dimensions of a convnet with known input
@@ -39,22 +41,35 @@ class ReferenceEncoder(nn.Module):
                 reference
                spec frames
     """
-    def __init__(self, input_dims, filter_size=3, filter_stride=2,
-                 layer_filters=[32, 32, 64, 64, 128, 128],
-                 embedding_dim=128, activation=nn.Tanh()):
+    def __init__(self, hparams=None, **kwargs):
+        r"""Accepted hparams
+        ===========================
+        input_dims      : (L_R, d_R)
+        filter_size     : receptive field of the CNN neurons
+        filter_stride   : stride of the CNN layers
+        filter_channels : array of channel depths in the CNN layers
+        embedding_dim   : dimension of the prosody space
+        activation      : an activation function for the final layer
+        """
         super().__init__()
-        self.input_dims = input_dims
-        self.embedding_dim = embedding_dim
 
-        self.conv_block = ConvBlock(input_dims, filter_size, filter_stride, layer_filters)
+        if hparams is None:  # recall: we shouldn't use mutable defaults
+            hparams = ref_encoder_hparams
+        hparams = {**hparams, **kwargs}  # individual parameter overrides
+        self.input_dims = hparams['input_dims']
+        self.embedding_dim = hparams['embedding_dim']
+        self.activation = hparams['activation']
+
+        self.conv_block = ConvBlock(self.input_dims, hparams['filter_size'],
+                                    hparams['filter_stride'], hparams['filter_channels'])
 
         # rnn input dimension should be (cnn output channels) * dR_reduced
-        rnn_input_dim = layer_filters[-1] * conv_output_dims(self.conv_block, input_dims)[1]
-        self.rnn_block = RnnBlock(rnn_input_dim, embedding_dim)
+        rnn_input_dim = hparams['filter_channels'][-1] *\
+            conv_output_dims(self.conv_block, self.input_dims)[1]
+        self.rnn_block = RnnBlock(rnn_input_dim, self.embedding_dim)
 
         # TODO: should there be bias in the linear layer?
         self.linear_layer = nn.Linear(self.rnn_block.embedding_dim, self.embedding_dim, bias=True)
-        self.activation = activation
 
     def forward(self, x):
         assert x.shape[2:] == self.input_dims  # this makes me a little uneasy
@@ -69,10 +84,10 @@ class ConvBlock(nn.Module):
     uncertain by the requirement of constant L_R
 
     """
-    def __init__(self, input_dims, filter_size, filter_stride, layer_filters):
+    def __init__(self, input_dims, filter_size, filter_stride, filter_channels):
         r"""input_dims: the dimensions (L_R, d_R) of the reference signal to be encoded
         filter_size: the (identical) receptive field of each filter
-        filter_stride: the (identical) stride of each filter layer_filters: an
+        filter_stride: the (identical) stride of each filter filter_channels: an
         array containing the /number of filters/ in each layer
 
         """
@@ -80,25 +95,25 @@ class ConvBlock(nn.Module):
         self.input_dims = input_dims
         self.filter_size = filter_size
         self.filter_stride = filter_stride
-        self.layer_filters = layer_filters
+        self.filter_channels = filter_channels
 
         # TODO: double-check this is correct
         # I don't really think it is.
-        self.output_dim = self.layer_filters[-1]
+        self.output_dim = self.filter_channels[-1]
 
         ### Internal layers ###
         # In each layer, filters with SAME padding, ReLU activation, and
         # Batchnorm.
         self.conv_layers = []
         self.batchnorm_layers = []
-        for i, filters in enumerate(layer_filters):
+        for i, filters in enumerate(filter_channels):
             self.batchnorm_layers.append(
                 nn.BatchNorm2d(num_features=filters,
                                affine=True) # learnable?
             )
 
             # TODO: how many in_channels and out_channels?
-            in_channels = 1 if i == 0 else layer_filters[i - 1]
+            in_channels = 1 if i == 0 else filter_channels[i - 1]
             # TODO: should use SAME padding. This doesn't appear to exist in
             # PyTorch. Newer versions of PyTorch do have a `padding_mode`
             # keyword argument, but it has no `SAME` option.
@@ -111,7 +126,7 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         r"""Forward pass through the convolution stage of the reference encoder. The if
         x has shape (1, 1, n, m), the output will have shape (1,
-        self.layer_filters[-1], ~n/(stride ** depth), ~m/(stride ** depth)).
+        self.filter_channels[-1], ~n/(stride ** depth), ~m/(stride ** depth)).
 
         """
 
@@ -119,7 +134,7 @@ class ConvBlock(nn.Module):
         # Seems that before ReLU is more conventional, but some theory papers
         # have suggested that after is better. TODO: will this be slow if I
         # don't explicitly unroll this loop?
-        for i, _ in enumerate(self.layer_filters):
+        for i, _ in enumerate(self.filter_channels):
             x = self.conv_layers[i](x)
             x = self.batchnorm_layers[i](x)
             x = F.relu(x)
