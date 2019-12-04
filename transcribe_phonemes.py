@@ -1,5 +1,5 @@
 r"""Usage: first argument is a transcription program, second is a file suffix
-that will be added to all the filenames. All subsequent arguments are file
+that will be added to all the filepaths. All subsequent arguments are file
 names.
 
 """
@@ -17,8 +17,9 @@ def transcribe_espeak(line):
     # split line
     prefix, line_content = line.split('|')
     # transcribe
-    completed_process = subprocess.run(['espeak', '--ipa', line], capture_output=True)
-    return completed_process.stdout.decode('utf-8').strip()
+    completed_process = subprocess.run(['espeak', '-v', 'en-us', '--ipa', line_content], capture_output=True)
+    transcript = completed_process.stdout.decode('utf-8').strip().replace('\n',' ')
+    return '|'.join([prefix, transcript]) + '\n'
 
 
 def transcribe_file(f, method='espeak'):
@@ -55,13 +56,13 @@ if __name__ == '__main__':
     os.environ['PATH'] += ':' + os.path.join(
         os.environ['HOME'], '.local', 'bin')
 
-    for filename in sys.argv[3:]:
-        with open(filename, 'r') as f:
+    for filepath in sys.argv[3:]:
+        with open(filepath, 'r') as f:
             try:
                 new_contents = transcribe_file(f, transcription_method)
             except ValueError as e:
                 print(e)
                 exit(2)
 
-        with open(os.path.join(out_dir, filename), 'w') as g:
+        with open(os.path.join(out_dir, os.path.basename(filepath)), 'w') as g:
             g.writelines(new_contents)
