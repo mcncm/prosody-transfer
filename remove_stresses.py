@@ -6,7 +6,7 @@ files.
 import os
 import sys
 
-banned_chars = ['ˈ', 'ː', 'ˌ']
+banned_chars = ['ˈ', 'ː', 'ˌ', '̩']
 
 if __name__ == '__main__':
     out_dir = sys.argv[1]
