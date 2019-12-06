@@ -30,13 +30,12 @@ class ReferenceEncoder(nn.Module):
 
         for i in range(0,6):
             conv_layer = nn.Sequential(
-                ConvNorm(in_channels = strided_conv2d_in[i],
-                         out_channels = strided_conv2d_out[i],
-                         kernel_size = 3,
-                         stride = 2,
-                         padding = 1,
-                         dilation = 1,
-                         w_init_gain = 'relu'),
+                nn.Conv2d(in_channels = strided_conv2d_in[i],
+                          out_channels = strided_conv2d_out[i],
+                          kernel_size = 3,
+                          stride = 2,
+                          padding = 1,
+                          dilation = 1),
                 nn.BatchNorm2d(strided_conv2d_out[i]))
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
