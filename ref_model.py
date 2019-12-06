@@ -21,8 +21,6 @@ class ReferenceEncoder(nn.Module):
         #   Downsamples reference signal by a factor of 64 along
         #   both dimensions (seq length & mel channels) due to stride
         #     Note: SAME padding is just (kernel_size - 1)/2, assuming kernel_size is odd
-        #           Method for initialization not specified in Skerry-Ryan et al, so using
-        #           Glorot initialization as in NVIDIA tacotron2 implementation
         #
         convolutions = []
         strided_conv2d_in = [1, 32, 32, 64, 64, 128]
@@ -43,6 +41,7 @@ class ReferenceEncoder(nn.Module):
         #
         # Gated Recurrent Unit:
         #   Summarizes sequence as a 128-dimensional vector
+        #     Note: input_size = ceil(n_mel_channels/64)
         # 
         self.gru = nn.GRU(input_size = 256,
                           hidden_size = 128,
@@ -50,7 +49,7 @@ class ReferenceEncoder(nn.Module):
 
         #
         # Fully connected layer
-        #   Linear projection of final GRU state to desired dimensionality,
+        #   Linear projection of final GRU output to desired dimensionality,
         #   (in this case, also 128-dim) followed by tanh activation
         #     Note: Using Glorot initialization as in NVIDIA implementation of tacotron2
         #
@@ -70,22 +69,41 @@ class ReferenceEncoder(nn.Module):
         #       (L/64 by 2 by 128) tensor ---> (L/64 by 256) matrix
         # 
 
+        #
+        # Note: The torch function calls below deal with variable length sequences
+        #       so that they can be processed in a batch. Still need to verify that
+        #       the syntax is correct
+        #
         input_lengths = input_lengths.cpu().numpy()
         x = nn.utils.rnn.pack_padded_sequence(
                 x, input_lengths, batch_first=True)
 
+        #
+        # Note: I believe this is to increase performance. Not sure if it's necessary
+        #
         self.gru.flatten_parameters()
 
         #
-        # Take 128-dim hidden state as summary of sequence
+        # TODO: Take 128-dim output of GRU, at final time step, as summary of sequence
+        #       Something like:
         #
-        _, x = self.gru(x)
+        x[-1], _ = self.gru(x)
 
-        _, x = nn.utils.rnn.pad_packed_sequence(
-                    x, batch_first=True) 
+        x[-1], _ = nn.utils.rnn.pad_packed_sequence(
+                     x, batch_first=True) 
 
+        #
+        # tanh activation to constrain the information contained in the embedding
+        #
         x = F.dropout(torch.tanh(self.linear_projection(x)), 0.5, self.training)
 
         return x
+
+    #
+    # TODO: Implement corresponding routine for inference. It will look very similar,
+    #       but will be processing a single (speech sample, text seq) pair rather than
+    #       a batch. Likely, it will be identical to the forward function, except it
+    #       won't need the pack_padded_sequence() or pad_packed_sequence() functions
+    #
 
 
