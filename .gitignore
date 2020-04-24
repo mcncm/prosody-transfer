@@ -1,0 +1,12 @@
+*.pt
+*.png
+*.pdf
+*.wav
+
+Blizzard-Challenge-2013/
+__pycache__/
+output-single/
+output/
+log/
+etc/
+

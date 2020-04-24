@@ -214,6 +214,21 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             x, y = model.parse_batch(batch)
             y_pred = model(x)
 
+            """
+            try:
+                y_pred = model(x)
+            except RuntimeError as e:
+                if 'out of memory' in str(e):
+                    print('WARNING: ran out of memory, retrying batch')
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            del p.grad
+                    torch.cuda.empty_cache()
+                    y_pred = model(x)
+                else:
+                    raise e
+            """
+
             loss = criterion(y_pred, y)
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
@@ -253,6 +268,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                                     checkpoint_path)
 
             iteration += 1
+            # torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':

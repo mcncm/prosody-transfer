@@ -9,24 +9,24 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Experiment Parameters        #
         ################################
-        epochs=500,
+        epochs=501,
         iters_per_checkpoint=1000,
         seed=1234,
         dynamic_loss_scaling=True,
         fp16_run=False,
         distributed_run=False,
         dist_backend="nccl",
-        dist_url="tcp://localhost:54321",
+        dist_url="tcp://node742:54321",
         cudnn_enabled=True,
         cudnn_benchmark=False,
-        ignore_layers=['embedding.weight'],
+        ignore_layers=[''],
 
         ################################
         # Data Parameters             #
         ################################
         load_mel_from_disk=False,
-        training_files='filelists/ljs_audio_text_train_filelist.txt',
-        validation_files='filelists/ljs_audio_text_val_filelist.txt',
+        training_files='filelists/bc_train_filelist',
+        validation_files='filelists/bc_val_filelist',
         text_cleaners=['english_cleaners'],
 
         ################################
@@ -81,7 +81,7 @@ def create_hparams(hparams_string=None, verbose=False):
         learning_rate=1e-3,
         weight_decay=1e-6,
         grad_clip_thresh=1.0,
-        batch_size=64,
+        batch_size=48,
         mask_padding=True  # set model's padded outputs to padded values
     )
 
