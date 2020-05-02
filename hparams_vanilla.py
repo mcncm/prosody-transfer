@@ -50,8 +50,7 @@ def create_hparams(hparams_string=None, verbose=False):
         # Encoder parameters
         encoder_kernel_size=5,
         encoder_n_convolutions=3,
-        text_embedding_dim=512,
-        prosody_embedding_dim=128,
+        encoder_embedding_dim=512,
 
         # Decoder parameters
         n_frames_per_step=1,  # currently only 1 is supported
@@ -82,7 +81,7 @@ def create_hparams(hparams_string=None, verbose=False):
         learning_rate=1e-3,
         weight_decay=1e-6,
         grad_clip_thresh=1.0,
-        batch_size=40,
+        batch_size=32,
         mask_padding=True  # set model's padded outputs to padded values
     )
 

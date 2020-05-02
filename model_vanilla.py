@@ -157,17 +157,17 @@ class Encoder(nn.Module):
         convolutions = []
         for _ in range(hparams.encoder_n_convolutions):
             conv_layer = nn.Sequential(
-                ConvNorm(hparams.text_embedding_dim,
-                         hparams.text_embedding_dim,
+                ConvNorm(hparams.encoder_embedding_dim,
+                         hparams.encoder_embedding_dim,
                          kernel_size=hparams.encoder_kernel_size, stride=1,
                          padding=int((hparams.encoder_kernel_size - 1) / 2),
                          dilation=1, w_init_gain='relu'),
-                nn.BatchNorm1d(hparams.text_embedding_dim))
+                nn.BatchNorm1d(hparams.encoder_embedding_dim))
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
 
-        self.lstm = nn.LSTM(hparams.text_embedding_dim,
-                            int(hparams.text_embedding_dim / 2), 1,
+        self.lstm = nn.LSTM(hparams.encoder_embedding_dim,
+                            int(hparams.encoder_embedding_dim / 2), 1,
                             batch_first=True, bidirectional=True)
 
     def forward(self, x, input_lengths):
@@ -201,127 +201,12 @@ class Encoder(nn.Module):
         return outputs
 
 
-class ReferenceEncoder(nn.Module):
-    """ReferenceEncoder module:
-        - Six-layer strided Conv2D network
-        - 128-unit GRU
-        - Linear projection
-    """
-    def __init__(self, hparams):
-        super(ReferenceEncoder, self).__init__()
-
-        #
-        # Strided Conv2d w/ BatchNorm:
-        #   Downsamples reference signal by a factor of 64 along
-        #   both dimensions (seq length & mel channels) due to stride
-        #     Note: SAME padding is just (kernel_size - 1)/2, assuming kernel_size is odd
-        #     TODO: bias? initialization? dropout?
-        #
-        convolutions = []
-        strided_conv2d_in = [1, 32, 32, 64, 64, 128]
-        strided_conv2d_out = [32, 32, 64, 64, 128, 128]
-
-        for i in range(0,6):
-            conv_layer = nn.Sequential(
-                nn.Conv2d(in_channels = strided_conv2d_in[i],
-                          out_channels = strided_conv2d_out[i],
-                          kernel_size = 3,
-                          stride = 2,
-                          padding = 1),
-                nn.BatchNorm2d(strided_conv2d_out[i]))
-            convolutions.append(conv_layer)
-        self.convolutions = nn.ModuleList(convolutions)
-
-        #
-        # Gated Recurrent Unit:
-        #   Summarizes sequence as a 128-dimensional vector
-        #     Note: input_size = 128 * ceil(n_mel_channels/64)
-        #     TODO: bias? dropout? bidirectional? deeper? initialization?
-        # 
-        self.gru = nn.GRU(input_size = 256,
-                          hidden_size = 128,
-                          num_layers = 1,
-                          batch_first = True)
-
-        #
-        # Fully connected layer
-        #   Linear projection of final GRU output to desired dimensionality,
-        #   (in this case, also 128-dim) followed by tanh activation
-        #     Note: Using Glorot initialization as in NVIDIA implementation of tacotron2
-        #
-        self.linear_projection = LinearNorm(in_dim = 128,
-                                            out_dim = 128,
-                                            w_init_gain='tanh')
-
-    def forward(self, x, lengths):
-
-        # Strided Conv2d w/ BatchNorm
-        for conv in self.convolutions:
-            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
-
-        # Unroll downsampled feature dim & signal length to a single inner dim
-        conv_size = x.size
-        x = x.view(conv_size(0), conv_size(1)*conv_size(2), conv_size(3))
-
-        x = x.transpose(1, 2)
-
-        # Pack padded sequence
-        lengths = torch.ceil(lengths.double()/64).long()
-        lengths, i = torch.sort(lengths, descending=True)
-        lengths_np = lengths.cpu().numpy()
-        x = nn.utils.rnn.pack_padded_sequence(x[i], lengths_np, batch_first=True)
-
-        # Aggregate all weight tensors into contiguous GPU memory
-        self.gru.flatten_parameters()
-
-        # Propagate through GRU
-        outputs, _ = self.gru(x)
-
-        # Pad packed sequence
-        outputs, _ = nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
-
-        # Take final output of GRU as pooled summarization of sequence
-        osize = outputs.size
-        finals = outputs.gather(1, (lengths-1).view(-1,1,1).expand(osize(0),1,osize(2)))
-
-        # Restore original sorting
-        _, i_inv = torch.sort(i)
-        finals[i_inv]
-
-        # tanh activation to constrain the information contained in the embedding
-        embeddings = F.dropout(torch.tanh(self.linear_projection(finals)), 0.5, self.training)
-
-        return embeddings 
-
-
-    def inference(self, x):
-
-        for conv in self.convolutions:
-            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
-        
-        conv_size = x.size
-        x = x.view(conv_size(0), conv_size(1)*conv_size(2), conv_size(3))
-
-        x = x.transpose(1, 2)
-
-        self.gru.flatten_parameters()
-
-        outputs, _ = self.gru(x)
-
-        final = outputs[:,-1]
-
-        embedding = F.dropout(torch.tanh(self.linear_projection(final)), 0.5, self.training)
-
-        return embedding
-
-
 class Decoder(nn.Module):
     def __init__(self, hparams):
         super(Decoder, self).__init__()
         self.n_mel_channels = hparams.n_mel_channels
         self.n_frames_per_step = hparams.n_frames_per_step
-        self.encoder_embedding_dim = hparams.text_embedding_dim \
-                                     + hparams.prosody_embedding_dim
+        self.encoder_embedding_dim = hparams.encoder_embedding_dim
         self.attention_rnn_dim = hparams.attention_rnn_dim
         self.decoder_rnn_dim = hparams.decoder_rnn_dim
         self.prenet_dim = hparams.prenet_dim
@@ -335,24 +220,24 @@ class Decoder(nn.Module):
             [hparams.prenet_dim, hparams.prenet_dim])
 
         self.attention_rnn = nn.LSTMCell(
-            hparams.prenet_dim + self.encoder_embedding_dim,
+            hparams.prenet_dim + hparams.encoder_embedding_dim,
             hparams.attention_rnn_dim)
 
         self.attention_layer = Attention(
-            hparams.attention_rnn_dim, self.encoder_embedding_dim,
+            hparams.attention_rnn_dim, hparams.encoder_embedding_dim,
             hparams.attention_dim, hparams.attention_location_n_filters,
             hparams.attention_location_kernel_size)
 
         self.decoder_rnn = nn.LSTMCell(
-            hparams.attention_rnn_dim + self.encoder_embedding_dim,
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim,
             hparams.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
-            hparams.decoder_rnn_dim + self.encoder_embedding_dim,
+            hparams.decoder_rnn_dim + hparams.encoder_embedding_dim,
             hparams.n_mel_channels * hparams.n_frames_per_step)
 
         self.gate_layer = LinearNorm(
-            hparams.decoder_rnn_dim + self.encoder_embedding_dim, 1,
+            hparams.decoder_rnn_dim + hparams.encoder_embedding_dim, 1,
             bias=True, w_init_gain='sigmoid')
 
     def get_go_frame(self, memory):
@@ -582,27 +467,26 @@ class Tacotron2(nn.Module):
         val = sqrt(3.0) * std  # uniform bounds for std
         self.embedding.weight.data.uniform_(-val, val)
         self.encoder = Encoder(hparams)
-        self.ref_encoder = ReferenceEncoder(hparams)
         self.decoder = Decoder(hparams)
         self.postnet = Postnet(hparams)
 
     def parse_batch(self, batch):
         text_padded, input_lengths, mel_padded, gate_padded, \
-            ref_lengths = batch
+            output_lengths = batch
         text_padded = to_gpu(text_padded).long()
         input_lengths = to_gpu(input_lengths).long()
         max_len = torch.max(input_lengths.data).item()
         mel_padded = to_gpu(mel_padded).float()
         gate_padded = to_gpu(gate_padded).float()
-        ref_lengths = to_gpu(ref_lengths).long()
+        output_lengths = to_gpu(output_lengths).long()
 
         return (
-            (text_padded, input_lengths, mel_padded, max_len, ref_lengths),
+            (text_padded, input_lengths, mel_padded, max_len, output_lengths),
             (mel_padded, gate_padded))
 
-    def parse_output(self, outputs, ref_lengths=None):
-        if self.mask_padding and ref_lengths is not None:
-            mask = ~get_mask_from_lengths(ref_lengths)
+    def parse_output(self, outputs, output_lengths=None):
+        if self.mask_padding and output_lengths is not None:
+            mask = ~get_mask_from_lengths(output_lengths)
             mask = mask.expand(self.n_mel_channels, mask.size(0), mask.size(1))
             mask = mask.permute(1, 0, 2)
 
@@ -613,20 +497,12 @@ class Tacotron2(nn.Module):
         return outputs
 
     def forward(self, inputs):
-        text_inputs, text_lengths, mels, max_len, ref_lengths = inputs
-        text_lengths, ref_lengths = text_lengths.data, ref_lengths.data
+        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+        text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
 
-        text_embeddings = self.encoder(embedded_inputs, text_lengths)
-        
-        prosody_embedding = self.ref_encoder(mels.unsqueeze(1), ref_lengths)
-
-        # Broadcast-concatenate fixed prosody_embedding w/ text_embedding
-        prosody_embedding = prosody_embedding.expand(prosody_embedding.size(0),
-                                                     text_embeddings.size(1),
-                                                     -1)
-        encoder_outputs = torch.cat([text_embeddings, prosody_embedding], 2)
+        encoder_outputs = self.encoder(embedded_inputs, text_lengths)
 
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, mels, memory_lengths=text_lengths)
@@ -636,21 +512,13 @@ class Tacotron2(nn.Module):
 
         return self.parse_output(
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
-            ref_lengths)
+            output_lengths)
 
-    def inference(self, text_sequence, ref_mels):
-        embedded_inputs = self.embedding(text_sequence).transpose(1, 2)
-        text_embeddings = self.encoder.inference(embedded_inputs)
-
-        prosody_embedding = self.ref_encoder.inference(ref_mels.unsqueeze(1))
-
-        # Broadcast-concatenate fixed prosody_embedding w/ text_embedding
-        prosody_embedding = prosody_embedding.expand(prosody_embedding.size(0),
-                                                     text_embeddings.size(1),
-                                                     -1)
-        encoder_outputs = torch.cat([text_embeddings, prosody_embedding], 2)
-
-        mel_outputs, gate_outputs, alignments = self.decoder.inference(encoder_outputs)
+    def inference(self, inputs):
+        embedded_inputs = self.embedding(inputs).transpose(1, 2)
+        encoder_outputs = self.encoder.inference(embedded_inputs)
+        mel_outputs, gate_outputs, alignments = self.decoder.inference(
+            encoder_outputs)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet

@@ -10,11 +10,11 @@ import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
-from model import Tacotron2
+from model_vanilla import Tacotron2
 from data_utils import TextMelLoader, TextMelCollate
 from loss_function import Tacotron2Loss
 from logger import Tacotron2Logger
-from hparams import create_hparams
+from hparams_vanilla import create_hparams
 
 
 def reduce_tensor(tensor, n_gpus):
@@ -202,7 +202,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
     model.train()
     is_overflow = False
-    # ================ MAIN TRAINING LOOP! ===================
+    # ================ MAIN TRAINNIG LOOP! ===================
     for epoch in range(epoch_offset, hparams.epochs):
         print("Epoch: {}".format(epoch))
         for i, batch in enumerate(train_loader):
@@ -212,8 +212,22 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             model.zero_grad()
             x, y = model.parse_batch(batch)
-
             y_pred = model(x)
+
+            """
+            try:
+                y_pred = model(x)
+            except RuntimeError as e:
+                if 'out of memory' in str(e):
+                    print('WARNING: ran out of memory, retrying batch')
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            del p.grad
+                    torch.cuda.empty_cache()
+                    y_pred = model(x)
+                else:
+                    raise e
+            """
 
             loss = criterion(y_pred, y)
             if hparams.distributed_run:
@@ -254,6 +268,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                                     checkpoint_path)
 
             iteration += 1
+            # torch.cuda.empty_cache()
 
 
 if __name__ == '__main__':

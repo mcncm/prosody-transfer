@@ -9,11 +9,8 @@ import matplotlib.pyplot as plt
 import pdb
 
 
-"""fig_dir = os.path.join('writeup', 'figures')
-"""
-
-log_path = os.path.join( 'output', 'log' , 'Vanilla-Tacotron2-Blizzard-Challenge' )
-fig_name = 'Vanilla-Tacotron2-Blizzard-Challenge.png'
+log_path = os.path.join( 'output', 'log' , 'Prosody-Tacotron2-Blizzard-Challenge-exp2' )
+fig_name = 'Prosody-Tacotron2-Blizzard-Challenge-exp2.png'
 iters_per_checkpoint = 1000
 
 def get_event( path ):
@@ -109,7 +106,7 @@ def plot_training_validation(experiments, smoothing=10, start=100):
 
 if __name__ == '__main__':
 
-    experiments = {'Vanilla Tacotron2 on LJ-Speech': log_path}
+    experiments = {'Prosody Tacotron2 on Blizzard Challenge': log_path}
     plot_training_validation( experiments, smoothing=50, start=100 )
 
 

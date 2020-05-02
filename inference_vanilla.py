@@ -16,12 +16,13 @@ sys.path.append('waveglow/')
 import numpy as np
 import torch
 
-from hparams import create_hparams
-from model import Tacotron2
+from hparams_vanilla import create_hparams
+from model_vanilla import Tacotron2
 from layers import TacotronSTFT, STFT
 from audio_processing import griffin_lim
-from train import load_model
+from train_vanilla import load_model
 from text import text_to_sequence
+from denoiser import Denoiser
 from convert_model import update_model
 
 import layers
@@ -40,18 +41,18 @@ def plot_data(data, figsize=(16, 4)):
 #### Setup hparams
 
 hparams = create_hparams()
+hparams.sampling_rate = 22050
 
 
 #### Load model from checkpoint
 
-# checkpoint_path = "output/blizzard-prosody-overtrained/checkpoint_56000"
-checkpoint_path = "output/checkpoint_24000"
+checkpoint_path = "output/blizzard-vanilla/checkpoint_37000" # "tacotron2_statedict.pt"
 model = load_model(hparams)
 model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
 _ = model.cuda().eval().half()
 
 
-#### Load WaveGlow for mel2audio synthesis
+#### Load WaveGlow for mel2audio synthesis and denoiser
 
 waveglow_path = 'waveglow_256channels.pt'
 waveglow_ = torch.load(waveglow_path)['model']
@@ -59,14 +60,15 @@ waveglow = update_model(waveglow_)
 waveglow.cuda().eval().half()
 for k in waveglow.convinv:
     k.float()
+denoiser = Denoiser(waveglow)
 
 
 #### Prepare text input
 
 # text = "I never expected to see you here."
-# text = "Gradually and imperceptibly the interlude melted into the soft opening minor chords of the Chopin Impromptu."
 # text = "Are there rats there?"
-# text = "Don't let us even ask said Sara"
+# text = "It could be beautiful."
+# text = "Don't let us even ask said Sara."
 # text = "Because it isn't Duncan that I do love she said looking up at him."
 text = "I will remember if I can."
 sequence = np.array(text_to_sequence(text, ['english_cleaners']))[None, :]
@@ -76,31 +78,13 @@ sequence = torch.autograd.Variable(
 
 #### Decode text input and plot results
 
-stft = layers.TacotronSTFT(
-    hparams.filter_length, hparams.hop_length, hparams.win_length,
-    hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin,
-    hparams.mel_fmax)
-
-# ref_wav = 'Blizzard-Challenge-2013/CB-WSQ-35-178.wav' # never
-# ref_wav = 'Blizzard-Challenge-2013/CB-AW-21-104.wav' # gradually
-# ref_wav = 'Blizzard-Challenge-2013/CB-ALP-06-139.wav' # rats
-# ref_wav = 'Blizzard-Challenge-2013/CB-ALP-16-174.wav' # ask
-# ref_wav = 'Blizzard-Challenge-2013/CB-LCL-19-282.wav' # do-love
-ref_wav = 'Blizzard-Challenge-2013/CB-LG-03-153.wav' # remember
-audio, sampling_rate = load_wav_to_torch(ref_wav)
-audio_norm = audio / hparams.max_wav_value
-audio_norm = audio_norm.unsqueeze(0)
-audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
-ref_mels = stft.mel_spectrogram(audio_norm)
-ref_mels = ref_mels.cuda().half()
-
-mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence, ref_mels)
+mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
 plot_data((mel_outputs.float().data.cpu().numpy()[0],
            mel_outputs_postnet.float().data.cpu().numpy()[0],
            alignments.float().data.cpu().numpy()[0].T))
 
 
-#### Synthesize audio from spectrogram using WaveGlow, and write out to wav
+#### Synthesize audio from spectrogram using WaveGlow
 
 with torch.no_grad():
     audio = waveglow.infer(mel_outputs_postnet, sigma=0.666)
@@ -108,4 +92,13 @@ with torch.no_grad():
     d_ = np.int16(d/np.max(np.abs(d)) * 32767)
     print(d_)
     wav.write('out.wav', hparams.sampling_rate, d_)
+
+
+# ipd.Audio(audio[0].data.cpu().numpy(), rate=hparams.sampling_rate)
+
+
+#### (Optional) Remove WaveGlow bias
+
+# audio_denoised = denoiser(audio, strength=0.01)[:, 0]
+# ipd.Audio(audio_denoised.cpu().numpy(), rate=hparams.sampling_rate) 
 

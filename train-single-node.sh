@@ -16,5 +16,5 @@ hostname
 source /home/szha0/anaconda2/etc/profile.d/conda.sh
 conda activate test7
 source /home/szha0/.matplotlib/matplotlibrc
-python train.py --output_directory=output --log_directory=log
+python train.py --output_directory=output-single --log_directory=log
 
