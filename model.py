@@ -298,7 +298,7 @@ class ReferenceEncoder(nn.Module):
     def inference(self, x):
 
         for conv in self.convolutions:
-            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+            x = F.relu(conv(x))
         
         conv_size = x.size
         x = x.view(conv_size(0), conv_size(1)*conv_size(2), conv_size(3))
