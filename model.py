@@ -3,7 +3,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
-from layers import ConvNorm, LinearNorm
+from layers import ConvNorm, Conv2dNorm, LinearNorm
 from utils import to_gpu, get_mask_from_lengths
 
 
@@ -223,11 +223,12 @@ class ReferenceEncoder(nn.Module):
 
         for i in range(0,6):
             conv_layer = nn.Sequential(
-                nn.Conv2d(in_channels = strided_conv2d_in[i],
-                          out_channels = strided_conv2d_out[i],
-                          kernel_size = 3,
-                          stride = 2,
-                          padding = 1),
+                Conv2dNorm(in_channels = strided_conv2d_in[i],
+                           out_channels = strided_conv2d_out[i],
+                           kernel_size = 3,
+                           stride = 2,
+                           padding = 1,
+                           w_init_gain = 'relu'),
                 nn.BatchNorm2d(strided_conv2d_out[i]))
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
@@ -286,7 +287,7 @@ class ReferenceEncoder(nn.Module):
 
         # Restore original sorting
         _, i_inv = torch.sort(i)
-        finals[i_inv]
+        finals = finals[i_inv]
 
         # tanh activation to constrain the information contained in the embedding
         embeddings = F.dropout(torch.tanh(self.linear_projection(finals)), 0.5, self.training)
@@ -310,7 +311,7 @@ class ReferenceEncoder(nn.Module):
 
         final = outputs[:,-1]
 
-        embedding = F.dropout(torch.tanh(self.linear_projection(final)), 0.5, self.training)
+        embedding = torch.tanh(self.linear_projection(final))
 
         return embedding
 
