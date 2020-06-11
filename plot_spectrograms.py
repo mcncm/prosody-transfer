@@ -11,12 +11,11 @@ from hparams import create_hparams
 import layers
 from utils import load_wav_to_torch
 
-import pdb
 
 #### Plotting routine
 
-def plot_data(data, plt_path, figsize=(16, 4)):
-    fig, axes = plt.subplots(1, len(data), figsize=figsize)
+def plot_data(data, plt_path, figsize=(4, 12)):
+    fig, axes = plt.subplots(len(data), 1, figsize=figsize)
     for i in range(len(data)):
         axes[i].imshow(data[i], aspect='auto', origin='bottom', 
                        interpolation='none')
@@ -51,7 +50,7 @@ ref_linear = ref_linear[:,:,-270:]
 
 #### Load prosody wav
 
-infer_wav = 'do-love-56000.wav'
+infer_wav = 'inference/do-love-[82000]-(1).wav'
 audio, sampling_rate = load_wav_to_torch(infer_wav)
 audio_norm = audio / hparams.max_wav_value
 audio_norm = audio_norm.unsqueeze(0)
@@ -77,12 +76,7 @@ vanilla_linear = stft.linear_spectrogram(audio_norm)
 vanilla_linear = vanilla_linear.cuda().float()
 
 
-#### Debugging
-
-pdb.set_trace()
-
-
-#### Plot mel spectrograms
+#### Plot mel spectrograms & alignments
 
 plt_filename = 'do-love-spectrograms.png'
 plt_path = plt_filename
@@ -92,6 +86,7 @@ plot_data((ref_mels.float().data.cpu().numpy()[0],
           plt_path)
 
 
+"""
 #### Plot linear spectrograms 
 
 plt_filename = 'do-love-linear.png'
@@ -100,4 +95,4 @@ plot_data((ref_linear.float().data.cpu().numpy()[0],
            infer_linear.float().data.cpu().numpy()[0],
            vanilla_linear.float().data.cpu().numpy()[0]),
           plt_path)
-
+"""
