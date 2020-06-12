@@ -33,15 +33,7 @@ import layers
 import scipy.io.wavfile as wav
 from utils import load_wav_to_torch
 
-
-"""
-def plot_data(data, figsize=(16, 4)):
-    fig, axes = plt.subplots(1, len(data), figsize=figsize)
-    for i in range(len(data)):
-        axes[i].imshow(data[i], aspect='auto', origin='bottom', 
-                       interpolation='none')
-    plt.savefig('out.pdf')
-"""
+from scipy.fftpack import fft, dct
 
 
 #### Setup hparams
@@ -71,14 +63,23 @@ denoiser = Denoiser(waveglow)
 
 #### Loop over 8 test utterances and corresponding ref wavs
 
-text = [ "Are there rats there?",
-         "Don't let us even ask said Sara.",
-         "Because it isn't Duncan that I do love she said looking up at him.",
-         "I will remember if I can!",
-         "They may write such things in a book Humpty Dumpty said in a calmer tone.",
-         "She is too fat said Lavinia.",
-         "She must be made to learn her father said to Miss Minchin.",
-         "I am so glad it was you who were my friend!" ]
+text_8 = [ "Are there rats there?",
+           "Don't let us even ask said Sara.",
+           "Because it isn't Duncan that I do love she said looking up at him.",
+           "I will remember if I can!",
+           "They may write such things in a book Humpty Dumpty said in a calmer tone.",
+           "She is too fat said Lavinia.",
+           "She must be made to learn her father said to Miss Minchin.",
+           "I am so glad it was you who were my friend!" ]
+
+ref_wav_8 = [ 'Blizzard-Challenge-2013/CB-ALP-06-139.wav', # rats
+              'Blizzard-Challenge-2013/CB-ALP-16-174.wav', # ask
+              'Blizzard-Challenge-2013/CB-LCL-19-282.wav', # do-love
+              'Blizzard-Challenge-2013/CB-LG-03-153.wav',  # remember
+              'Blizzard-Challenge-2013/CB-LG-06-49.wav',   # book
+              'Blizzard-Challenge-2013/CB-ALP-06-30.wav',  # is
+              'Blizzard-Challenge-2013/CB-ALP-03-52.wav',  # made
+              'Blizzard-Challenge-2013/CB-ALP-19-31.wav' ] # glad
 
 abbrev = [ 'rats',
            'ask',
@@ -90,7 +91,7 @@ abbrev = [ 'rats',
            'glad' ]
 
 
-for i, t in enumerate(text):
+for i, t in enumerate(text_8):
 
     for j in range(3):
 
@@ -103,11 +104,6 @@ for i, t in enumerate(text):
         #### Decode text input and plot results
 
         mel_outputs, mel_outputs_postnet, _, alignments = model.inference(sequence)
-        """
-        plot_data((mel_outputs.float().data.cpu().numpy()[0],
-                   mel_outputs_postnet.float().data.cpu().numpy()[0],
-                   alignments.float().data.cpu().numpy()[0].T))
-        """
 
         #### Synthesize audio from spectrogram using WaveGlow, and write out to wav
 
