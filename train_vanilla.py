@@ -263,7 +263,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                          hparams.distributed_run, rank)
                 if rank == 0:
                     checkpoint_path = os.path.join(
-                        output_directory, "checkpoint_{}".format(iteration))
+                        output_directory, "vanilla_{}".format(64000+iteration))
                     save_checkpoint(model, optimizer, learning_rate, iteration,
                                     checkpoint_path)
 

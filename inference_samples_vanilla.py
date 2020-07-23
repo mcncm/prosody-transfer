@@ -43,8 +43,8 @@ hparams = create_hparams()
 
 #### Load model from checkpoint
 
-training_steps = 37000
-checkpoint_path = "output/blizzard-vanilla/checkpoint_{}".format(training_steps)
+training_steps = 80000
+checkpoint_path = "output/vanilla_{}".format(training_steps)
 model = load_model(hparams)
 model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
 _ = model.cuda().eval().float()
