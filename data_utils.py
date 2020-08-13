@@ -7,6 +7,8 @@ import layers
 from utils import load_wav_to_torch, load_filepaths_and_text
 from text import text_to_sequence
 
+import pdb
+
 
 class TextMelLoader(torch.utils.data.Dataset):
     """
@@ -34,7 +36,15 @@ class TextMelLoader(torch.utils.data.Dataset):
         mel = self.get_mel(audiopath)
         return (text, mel)
 
+    def get_mel_text_speaker_tuple(self, audiopath_and_text):
+        audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
+        text = self.get_text(text)
+        mel = self.get_mel(audiopath)
+        speaker_id = self.get_speaker_id(audiopath)
+        return (text, mel, speaker_id)
+
     def get_mel(self, filename):
+
         if not self.load_mel_from_disk:
             audio, sampling_rate = load_wav_to_torch(filename)
             if sampling_rate != self.stft.sampling_rate:
@@ -57,8 +67,13 @@ class TextMelLoader(torch.utils.data.Dataset):
         text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
         return text_norm
 
+    def get_speaker_id(self, filename):
+        speaker_id = int(filename.strip().split("/")[2])
+        return speaker_id
+
     def __getitem__(self, index):
-        return self.get_mel_text_pair(self.audiopaths_and_text[index])
+        # return self.get_mel_text_pair(self.audiopaths_and_text[index])
+        return self.get_mel_text_speaker_tuple(self.audiopaths_and_text[index])
 
     def __len__(self):
         return len(self.audiopaths_and_text)
@@ -76,6 +91,7 @@ class TextMelCollate():
         ------
         batch: [text_normalized, mel_normalized]
         """
+
         # Right zero-pad all one-hot text sequences to max input length
         input_lengths, ids_sorted_decreasing = torch.sort(
             torch.LongTensor([len(x[0]) for x in batch]),
@@ -101,11 +117,14 @@ class TextMelCollate():
         gate_padded = torch.FloatTensor(len(batch), max_target_len)
         gate_padded.zero_()
         output_lengths = torch.LongTensor(len(batch))
+        speaker_ids = torch.LongTensor(len(batch))
         for i in range(len(ids_sorted_decreasing)):
             mel = batch[ids_sorted_decreasing[i]][1]
             mel_padded[i, :, :mel.size(1)] = mel
             gate_padded[i, mel.size(1)-1:] = 1
             output_lengths[i] = mel.size(1)
+            speaker_id = batch[ids_sorted_decreasing[i]][2]
+            speaker_ids[i] = speaker_id
 
         return text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths
+            output_lengths, speaker_ids
